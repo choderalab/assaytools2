@@ -13,27 +13,21 @@ from tensorflow_probability import distributions as tfd
 import copy
 from tensorflow_probability import edward2 as ed
 
-class LogNormal:
-    def __init__(self, loc, scale):
-        self.loc = loc
-        self.scale = scale
+# NOTE: this is very weird. not sure why you need to manually log it back.
 
-    def __call__(self):
+class LogNormal:
+    def __new__(self, loc, scale):
         log_normal = tf.contrib.distributions.TransformedDistribution(
-        distribution = tf.contrib.distributions.Normal(loc = self.loc, scale = self.scale),
+        distribution = tf.contrib.distributions.Normal(loc = loc, scale = scale),
         bijector = tf.contrib.distributions.bijectors.Exp(),
         name = "LogNormal"
         )
         return log_normal
 
 class MultivariateLogNormal:
-    def __init__(self, loc, covariance_matrix):
-        self.loc = loc
-        self.covariance_matrix = covariance_matrix
-
-    def __call__(self):
+    def __new__(self, loc, covariance_matrix):
         log_normal = tf.contrib.distributions.TransformedDistribution(
-        distribution = tf.contrib.distributions.MultivariateNormalFullCovariance(loc = self.loc, covariance_matrix = self.covariance_matrix),
+        distribution = tf.contrib.distributions.MultivariateNormalFullCovariance(loc = loc, covariance_matrix = covariance_matrix),
         bijector = tf.contrib.distributions.bijectors.Exp(),
         name = "MultivariateLogNormal"
         )
