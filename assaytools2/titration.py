@@ -31,8 +31,8 @@ class Solution:
         if d_concs == None:
             d_concs = [d_conc_p, d_conc_l, d_conc_r]
 
-        self.concs = np.array([conc_p, conc_l, conc_r], dtype=np.float64)
-        self.d_concs = np.array([d_conc_p, d_conc_l, d_conc_r], dtype=np.float64)
+        self.concs = np.array([conc_p, conc_l, conc_r], dtype=np.float32)
+        self.d_concs = np.array([d_conc_p, d_conc_l, d_conc_r], dtype=np.float32)
 
 
 class SingleWell:
@@ -46,10 +46,10 @@ class SingleWell:
         self.analytical = analytical
         self.path_length = path_length
         if analytical == True:
-            self.vols = np.zeros((1, ), dtype=np.float64)
-            self.vols_cov = np.zeros((1, 1), dtype=np.float64)
-            self.concs = np.zeros((3, 1), dtype=np.float64)
-            self.concs_cov = np.zeros((3, 1, 1), dtype=np.float64)
+            self.vols = np.zeros((1, ), dtype=np.float32)
+            self.vols_cov = np.zeros((1, 1), dtype=np.float32)
+            self.concs = np.zeros((3, 1), dtype=np.float32)
+            self.concs_cov = np.zeros((3, 1, 1), dtype=np.float32)
 
             # to simplify, we enforce that, the titration all come from the same source,
             # i.e., the uncertainty of the same species should stay the same.
@@ -119,22 +119,22 @@ class SingleWell:
     def vols_rv(self):
         if self.finished_select_non_zero == False:
             self.select_non_zero()
-        return copy.deepcopy(LogNormal(loc=np.array(self.vols, dtype=np.float64),
-                    scale=np.array(self.vols_cov, dtype=np.float64)))
+        return copy.deepcopy(LogNormal(loc=np.array(self.vols, dtype=np.float32),
+                    scale=np.array(self.vols_cov, dtype=np.float32)))
 
     @property
     def concs_l_rv(self):
         if self.finished_select_non_zero == False:
             self.select_non_zero()
-        return copy.deepcopy(MultivariateLogNormal(loc=np.array(self.concs[1, :], dtype=np.float64),
-                    covariance_matrix=np.array(self.concs_cov[1, :, :], dtype=np.float64)))
+        return copy.deepcopy(MultivariateLogNormal(loc=np.array(self.concs[1, :], dtype=np.float32),
+                    covariance_matrix=np.array(self.concs_cov[1, :, :], dtype=np.float32)))
 
     @property
     def concs_p_rv(self):
         if self.finished_select_non_zero == False:
             self.select_non_zero()
-        return copy.deepcopy(MultivariateLogNormal(loc=np.array(self.concs[0, :], dtype=np.float64),
-                    covariance_matrix=np.array(self.concs_cov[0, :, :], dtype=np.float64)))
+        return copy.deepcopy(MultivariateLogNormal(loc=np.array(self.concs[0, :], dtype=np.float32),
+                    covariance_matrix=np.array(self.concs_cov[0, :, :], dtype=np.float32)))
 
 
     def select_non_zero(self):
@@ -173,11 +173,11 @@ class SingleWell:
         if self.analytical == True:
             if self.finished_select_non_zero == False:
                 self.select_non_zero()
-            vols_rv = LogNormal(loc=np.array(self.vols, dtype=np.float64),
-                        scale=np.array(self.vols_cov, dtype=np.float64))
+            vols_rv = LogNormal(loc=np.array(self.vols, dtype=np.float32),
+                        scale=np.array(self.vols_cov, dtype=np.float32))
 
-            concs_l_rv = MultivariateLogNormal(loc=np.array(self.concs[1, 2:], dtype=np.float64),
-                        covariance_matrix=np.array(self.concs_cov[1, 2:, 2:], dtype=np.float64))
+            concs_l_rv = MultivariateLogNormal(loc=np.array(self.concs[1, 2:], dtype=np.float32),
+                        covariance_matrix=np.array(self.concs_cov[1, 2:, 2:], dtype=np.float32))
 
             return tf.log(vols_rv.sample(n_samples)), tf.log(concs_l_rv.sample(n_samples))
             # return vols_.distribution.sample(n_samples)

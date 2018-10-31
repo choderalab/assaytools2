@@ -52,13 +52,13 @@ class TwoComponentBindingModel(BindingModel):
 
    @classmethod
    def equilibrium_concentrations_tf(cls, DeltaG, Ptot, Ltot):
-         PL = tf.zeros(Ptot.shape, dtype=tf.float64)
+         PL = tf.zeros(Ptot.shape, dtype=tf.float32)
          logP = tf.log(Ptot)
          logL = tf.log(Ltot)
          logPLK = tf.log(tf.exp(tf.log(tf.exp(logP) + tf.exp(logL))) + tf.exp(DeltaG))
          # logPLK = np.logaddexp(np.logaddexp(logP, logL), DeltaG)
          PLK = tf.exp(logPLK);
-         sqrt_arg = tf.constant(1.0, dtype=tf.float64) - tf.exp(tf.log(tf.constant(4.0, dtype=np.float64)) + logP + logL - 2*logPLK);
+         sqrt_arg = tf.constant(1.0, dtype=tf.float32) - tf.exp(tf.log(tf.constant(4.0, dtype=np.float32)) + logP + logL - 2*logPLK);
          # sqrt_arg[sqrt_arg < 0.0] = 0.0 # ensure always positive
          PL = 0.5 * PLK * (1.0 - tf.sqrt(sqrt_arg));  # complex concentration (M)
          P = Ptot - PL # free protein concentration in sample cell after n injections (M)
