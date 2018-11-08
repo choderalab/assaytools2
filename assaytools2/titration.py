@@ -119,21 +119,22 @@ class SingleWell:
     def vols_rv(self):
         if self.finished_select_non_zero == False:
             self.select_non_zero()
-        return copy.deepcopy(LogNormal(loc=np.array(self.vols, dtype=np.float32),
+
+        return copy.deepcopy(tfd.Normal(loc=np.array(self.vols, dtype=np.float32),
                     scale=np.array(self.vols_cov, dtype=np.float32)))
 
     @property
     def concs_l_rv(self):
         if self.finished_select_non_zero == False:
             self.select_non_zero()
-        return copy.deepcopy(MultivariateLogNormal(loc=np.array(self.concs[1, :], dtype=np.float32),
+        return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[1, :], dtype=np.float32),
                     covariance_matrix=np.array(self.concs_cov[1, :, :], dtype=np.float32)))
 
     @property
     def concs_p_rv(self):
         if self.finished_select_non_zero == False:
             self.select_non_zero()
-        return copy.deepcopy(MultivariateLogNormal(loc=np.array(self.concs[0, :], dtype=np.float32),
+        return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[0, :], dtype=np.float32),
                     covariance_matrix=np.array(self.concs_cov[0, :, :], dtype=np.float32)))
 
 
