@@ -16,6 +16,7 @@ from tensorflow_probability import edward2 as ed
 from utils import *
 
 
+
 class Solution:
     """
     A Solution object contains the information about the solution, i.e. species,
@@ -58,7 +59,12 @@ class SingleWell:
             self.finished_select_non_zero = False
 
         elif analytical == False:
-            raise NotImplementedError
+            self.sampled = False
+            self.finished_select_non_zero = False
+            self.ind_vols = np.zeros((1, ), dtype=np.float32)
+            self.ind_concs = np.zeros((3, 1), dtype=np.float32)
+            self.ind_d_vols = np.zeros((1, ), dtype=np.float32)
+            self.ind_d_concs = np.zeros((3, 1), dtype=np.float32)
 
     def inject(self,
                 solution = None,
@@ -100,7 +106,7 @@ class SingleWell:
             self.vols_cov = np.tile(vols_cov_1d, (vols_cov_1d.shape[0], 1))
 
             # update concentration
-            current_vol = self.vols[-1]
+            current_vol = self.vols[-2]
             current_concs = np.expand_dims(self.concs[:, -1], 0)
             new_concs = np.true_divide(current_concs * current_vol + vol * solution.concs,
                                         current_vol + vol).transpose()
@@ -115,8 +121,18 @@ class SingleWell:
                             (np.triu(volume_scaling) + np.triu(volume_scaling, 1).transpose())
             self.concs_cov[:, 0, 0] = np.zeros(self.concs_cov.shape[0])
 
+        elif self.analytical == False:
+            # keep track of the independently added vols and concs.
+            self.ind_vols = np.append(self.ind_vols, vol)
+            self.ind_concs = np.concatenate([self.ind_concs, np.expand_dims(solution.concs, axis=1)], axis=1)
+            self.ind_d_vols = np.append(self.ind_d_vols, d_vol)
+            self.ind_d_concs = np.concatenate([self.ind_d_concs, np.expand_dims(solution.d_concs, axis=1)], axis=1)
+
+
     @property
     def vols_rv(self):
+        if (self.analytical == False) and (self.sampled == False):
+            self.sample()
         if self.finished_select_non_zero == False:
             self.select_non_zero()
 
@@ -125,6 +141,8 @@ class SingleWell:
 
     @property
     def concs_l_rv(self):
+        if (self.analytical == False) and (self.sampled == False):
+            self.sample()
         if self.finished_select_non_zero == False:
             self.select_non_zero()
         return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[1, :], dtype=np.float32),
@@ -132,11 +150,69 @@ class SingleWell:
 
     @property
     def concs_p_rv(self):
+        if (self.analytical == False) and (self.sampled == False):
+            self.sample()
         if self.finished_select_non_zero == False:
             self.select_non_zero()
         return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[0, :], dtype=np.float32),
                     covariance_matrix=np.array(self.concs_cov[0, :, :], dtype=np.float32)))
 
+    @property
+    def concs_r_rv(self):
+        if (self.analytical == False) and (self.sampled == False):
+            self.sample()
+        if self.finished_select_non_zero == False:
+            self.select_non_zero()
+        return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[2, :], dtype=np.float32),
+                    covariance_matrix=np.array(self.concs_cov[2, :, :], dtype=np.float32)))
+
+    def sample(self, n_samples = 1):
+        if self.analytical:
+            import warning
+            warning.warn("This is an analytical cell, no need to sample.")
+
+        elif self.analytical == False:
+            # define the random variables
+            ind_vols_rv = MultivariateLogNormalDiag(self.ind_vols, self.ind_d_vols)
+            ind_concs_p_rv = MultivariateLogNormalDiag(self.ind_concs[0, :], self.ind_d_concs[0, :])
+            ind_concs_l_rv = MultivariateLogNormalDiag(self.ind_concs[1, :], self.ind_d_concs[1, :])
+            ind_concs_r_rv = MultivariateLogNormalDiag(self.ind_concs[2, :], self.ind_d_concs[2, :])
+
+            ind_vols = np.log(ind_vols_rv.sample(n_samples).numpy())
+            ind_concs_p = np.log(ind_concs_p_rv.sample(n_samples).numpy())
+            ind_concs_l = np.log(ind_concs_l_rv.sample(n_samples).numpy())
+            ind_concs_r = np.log(ind_concs_r_rv.sample(n_samples).numpy())
+
+            # the cumulative volume is the sum of all the volumes previously
+            vols = np.tril(np.ones((ind_vols.shape[1], ind_vols.shape[1]))).dot(ind_vols.transpose()).transpose()
+
+            # use quantity instead
+            q_p = np.tril(np.ones((ind_vols.shape[1], ind_vols.shape[1]))).dot((ind_vols * ind_concs_p).transpose()).transpose()
+            q_l = np.tril(np.ones((ind_vols.shape[1], ind_vols.shape[1]))).dot((ind_vols * ind_concs_l).transpose()).transpose()
+            q_r = np.tril(np.ones((ind_vols.shape[1], ind_vols.shape[1]))).dot((ind_vols * ind_concs_r).transpose()).transpose()
+
+            # calculate the concentrations from quantity
+            concs_p = np.nan_to_num(np.true_divide(q_p, vols))
+            concs_l = np.nan_to_num(np.true_divide(q_l, vols))
+            concs_r = np.nan_to_num(np.true_divide(q_r, vols))
+
+            # now take average and give mean and variance
+            self.vols = np.average(vols.transpose(), axis=0).flatten()
+            self.concs = np.concatenate([
+                         np.expand_dims(np.average(concs_p.transpose(), axis=1), axis=0),
+                         np.expand_dims(np.average(concs_l.transpose(), axis=1), axis=0),
+                         np.expand_dims(np.average(concs_r.transpose(), axis=1), axis=0)], axis=0)
+
+            # update volumes
+            self.vols_cov = np.cov(vols.transpose())
+            self.concs_cov = np.concatenate([
+                             np.expand_dims(np.cov(concs_p.transpose()), axis=2),
+                             np.expand_dims(np.cov(concs_l.transpose()), axis=2),
+                             np.expand_dims(np.cov(concs_r.transpose()), axis=2)], axis=0)
+
+            self.sampled = True
+
+            return vols, concs_p, concs_l, concs_r
 
     def select_non_zero(self):
         """
@@ -144,43 +220,16 @@ class SingleWell:
 
         """
         from functools import reduce
+
         non_zero_idxs = reduce(np.intersect1d,
                               (np.where(self.vols>0),
                                # np.where(self.concs[0,:]>0),
-                               np.where(self.concs[1,:]>0)))
+                               np.where(self.concs[0,:]>0)))
 
-        print(non_zero_idxs)
+        print(self.concs_cov)
+        print(self.concs_cov.shape)
         self.vols = self.vols[non_zero_idxs]
         self.concs = self.concs[:, non_zero_idxs]
         self.vols_cov = self.vols_cov[non_zero_idxs, :][:, non_zero_idxs]
         self.concs_cov = self.concs_cov[:, non_zero_idxs, :][:, :, non_zero_idxs]
         self.finished_select_non_zero = True
-
-
-
-    def sample(self, n_samples = 1):
-        """
-        Draw samples from the defined distribution.
-
-        Parameters
-        ----------
-        n_samples : the number of samples to be drawn.
-
-        Returns
-        -------
-        vols : the volumes of the well, with time axis.
-        concs: concentrations of species in the well, with time axis.
-        """
-        if self.analytical == True:
-            if self.finished_select_non_zero == False:
-                self.select_non_zero()
-            vols_rv = LogNormal(loc=np.array(self.vols, dtype=np.float32),
-                        scale=np.array(self.vols_cov, dtype=np.float32))
-
-            concs_l_rv = MultivariateLogNormal(loc=np.array(self.concs[1, 2:], dtype=np.float32),
-                        covariance_matrix=np.array(self.concs_cov[1, 2:, 2:], dtype=np.float32))
-
-            return tf.log(vols_rv.sample(n_samples)), tf.log(concs_l_rv.sample(n_samples))
-            # return vols_.distribution.sample(n_samples)
-            # concs_p_ = ed.MultivariateLogNormal(loc=self.concs[0, :], covariance_matrix=self.concs_cov[0, :, :])
-            # return vols_.distribution.sample(n_samples), concs_p_.distributions.sample(n_samples)

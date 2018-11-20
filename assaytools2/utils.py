@@ -32,3 +32,12 @@ class MultivariateLogNormal:
         name = "MultivariateLogNormal"
         )
         return log_normal
+
+class MultivariateLogNormalDiag:
+    def __new__(self, loc, scale_diag):
+        log_normal = tfd.TransformedDistribution(
+        distribution = tfd.MultivariateNormalDiag(loc = loc, scale_diag = scale_diag),
+        bijector = tfp.bijectors.Exp(),
+        name = "MultivariateLogNormalDiag"
+        )
+        return log_normal
