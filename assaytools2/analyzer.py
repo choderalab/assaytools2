@@ -5,8 +5,20 @@ from mpl_toolkits.mplot3d import Axes3D
 import sklearn
 
 def plot_rv(rv, n_sample = 10000, style = 'pca'):
-    """
-    plt some distribution.
+    """plt some distribution.
+
+    Parameters
+    ----------
+    rv :
+        
+    n_sample :
+         (Default value = 10000)
+    style :
+         (Default value = 'pca')
+
+    Returns
+    -------
+
     """
     samples = rv.sample(n_sample).numpy()
     print(rv.name)
@@ -53,8 +65,24 @@ def plot_rv(rv, n_sample = 10000, style = 'pca'):
 
 
 def plot_est(points, rv, rv_ax, style = 'pca', pca=None):
-    """
-    plot the estimation points
+    """plot the estimation points
+
+    Parameters
+    ----------
+    points :
+        
+    rv :
+        
+    rv_ax :
+        
+    style :
+         (Default value = 'pca')
+    pca :
+         (Default value = None)
+
+    Returns
+    -------
+
     """
     zs = np.array([])
     for idx in range(points.shape[0]):
@@ -80,8 +108,20 @@ def plot_est(points, rv, rv_ax, style = 'pca', pca=None):
         return rv_ax
 
 def plot_all(points, rv, n_sample = 10000):
-    """
-    plot the distribution and the sample points
+    """plot the distribution and the sample points
+
+    Parameters
+    ----------
+    points :
+        
+    rv :
+        
+    n_sample :
+         (Default value = 10000)
+
+    Returns
+    -------
+
     """
 
     samples = rv.sample(n_sample).numpy()

@@ -32,10 +32,7 @@ C0 = 1.0 # standard concentration (M)
 #=============================================================================================
 
 class BindingModel(object):
-    """
-    Abstract base class for reaction models.
-
-    """
+    """Abstract base class for reaction models."""
 
     def __init__(self):
         pass
@@ -45,13 +42,25 @@ class BindingModel(object):
 #=============================================================================================
 
 class TwoComponentBindingModel(BindingModel):
-   """
-   Simple two-component association.
-
-   """
+    """Simple two-component association."""
 
    @classmethod
    def equilibrium_concentrations_tf(cls, DeltaG, Ptot, Ltot):
+     """
+
+     Parameters
+     ----------
+     DeltaG :
+         
+     Ptot :
+         
+     Ltot :
+         
+
+     Returns
+     -------
+
+     """
          PL = tf.zeros(Ptot.shape, dtype=tf.float32)
          logP = tf.log(Ptot)
          logL = tf.log(Ltot)
@@ -67,28 +76,22 @@ class TwoComponentBindingModel(BindingModel):
 
    @classmethod
    def equilibrium_concentrations(cls, DeltaG, Ptot, Ltot):
-      """
-      Compute equilibrium concentrations for simple two-component association.
+     """Compute equilibrium concentrations for simple two-component association.
 
-      Parameters
-      ----------
-      DeltaG : float
+     Parameters
+     ----------
+     DeltaG : float
          Reduced free energy of binding (in units of kT)
-      Ptot : float or numpy array
+     Ptot : float or numpy array
          Total protein concentration summed over bound and unbound species, molarity.
-      Ltot : float or numpy array
+     Ltot : float or numpy array
          Total ligand concentration summed over bound and unbound speciesl, molarity.
 
-      Returns
-      -------
-      P : float or numpy array with same dimensions as Ptot
-         Free protein concentration, molarity.
-      L : float or numpy array with same dimensions as Ptot
-         Free ligand concentration, molarity.
-      PL : float or numpy array with same dimensions as Ptot
-         Bound complex concentration, molarity.
+     Returns
+     -------
 
-      """
+     
+     """
       # Handle only strictly positive elements---all others are set to zero as constants
       try:
           nonzero_indices = np.where(Ltot > 0)[0]
@@ -142,54 +145,50 @@ class TwoComponentBindingModel(BindingModel):
 #=============================================================================================
 
 class GeneralBindingModel(BindingModel):
-   """
-   General robust binding model for one protein and arbitrary number of competitive ligands.
-
-   """
+    """General robust binding model for one protein and arbitrary number of competitive ligands."""
 
    @classmethod
    def equilibrium_concentrations(cls, reactions, conservation_equations, tol=1.0e-8):
-      """
-      Compute the equilibrium concentrations of each complex species for a general set of binding reactions.
+     """Compute the equilibrium concentrations of each complex species for a general set of binding reactions.
 
-      Parameters
-      ----------
-      reactions : list
-          List of binding reactions.
-          Each binding reaction is encoded as a tuple of (log equilibrium constant, dict of stoichiometry)
-          Example: K_d = [RL] / ([R] [L]) becomes [ (-10, {'RL': -1, 'R' : +1, 'L' : +1}) ]
-      conservation_equations : list
-          List of mass conservation laws.
-          Each mass conservation law is encoded as a tuple of (log total concentration, dict of stoichiometry of all species)
-          Example: [R]tot = 10^-6 M = [RL] + [R] and [L]tot = 10^-6 M = [RL] + [L] becomes [ (-6, {'RL' : +1, 'R' : +1}), (-6, {'RL' : +1, 'L' : +1}) ]
-      tol : float, optional, default=1.0e-8
-          Solution tolerance.
+     Parameters
+     ----------
+     reactions : list
+         List of binding reactions.
+         Each binding reaction is encoded as a tuple of (log equilibrium constant, dict of stoichiometry)
+         Example: K_d = [RL] / ([R] [L]) becomes [ (-10, {'RL': -1, 'R' : +1, 'L' : +1}) ]
+     conservation_equations : list
+         List of mass conservation laws.
+         Each mass conservation law is encoded as a tuple of (log total concentration, dict of stoichiometry of all species)
+         Example: [R]tot = 10^-6 M = [RL] + [R] and [L]tot = 10^-6 M = [RL] + [L] becomes [ (-6, {'RL' : +1, 'R' : +1}), (-6, {'RL' : +1, 'L' : +1}) ]
+     tol : float, optional, default=1.0e-8
+         Solution tolerance. (Default value = 1.0e-8)
 
-      Returns
-      -------
-      log_concentrations : dict of str : float
-          log_concentrations[species] is the log concentration of specified species
+     Returns
+     -------
+     log_concentrations : dict of str : float
+         log_concentrations[species] is the log concentration of specified species
 
-      Examples
-      --------
-
-      Simple 1:1 association
-
-      >>> reactions = [ (-10, {'RL': -1, 'R' : +1, 'L' : +1}) ]
+     Examples
+     --------
+     
+     Simple 1:1 association
+     
+     
+          Competitive 1:1 association
+     
+     
+     TODO
+     ----
+     * Can we allow the caller to specify initial conditions instead of conservation laws?
+     >>> reactions = [ (-10, {'RL': -1, 'R' : +1, 'L' : +1}) ]
       >>> conservation_equations = [ (-6, {'RL' : +1, 'R' : +1}), (-6, {'RL' : +1, 'L' : +1}) ]
       >>> log_concentrations = GeneralBindingModel.equilibrium_concentrations(reactions, conservation_equations)
-
-     Competitive 1:1 association
-
+     
       >>> reactions = [ (-10, {'RL': -1, 'R' : +1, 'L' : +1}), (-5, {'RP' : -1, 'R' : +1, 'P' : +1}) ]
       >>> conservation_equations = [ (-6, {'RL' : +1, 'RP' : +1, 'R' : +1}), (-6, {'RL' : +1, 'L' : +1}), (-5, {'RP' : +1, 'P' : +1}) ]
       >>> log_concentrations = GeneralBindingModel.equilibrium_concentrations(reactions, conservation_equations)
-
-      TODO
-      ----
-      * Can we allow the caller to specify initial conditions instead of conservation laws?
-
-      """
+     """
 
       nreactions = len(reactions)
       nconservation = len(conservation_equations)
@@ -205,6 +204,17 @@ class GeneralBindingModel(BindingModel):
 
       # Construct function with appropriate roots.
       def ftarget(X):
+        """
+
+        Parameters
+        ----------
+        X :
+            
+
+        Returns
+        -------
+
+        """
           target = np.zeros([nequations], np.float64)
           jacobian = np.zeros([nequations, nspecies], np.float64)
           equation_index = 0

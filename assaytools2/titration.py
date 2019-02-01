@@ -15,12 +15,10 @@ import copy
 from tensorflow_probability import edward2 as ed
 from utils import *
 
-
-
 class Solution:
-    """
-    A Solution object contains the information about the solution, i.e. species,
-    concentrations, and so on.
+    """A Solution object contains the information about the solution, i.e. species,
+    concentrations, and so forth.
+
     """
     # TODO: use this class to further record physical constants.
     def __init__(self, conc_p = 0, conc_l = 0, conc_r = 0,
@@ -37,9 +35,14 @@ class Solution:
 
 
 class SingleWell:
-    """
-    A SingWell object contains all the information about the volumes, concentrations of
+    """A SingWell object contains all the information about the volumes, concentrations of
     species, as well as the covariance thereof, in a certain time series.
+
+    Parameters
+    ----------
+
+    Returns
+    -------
 
     """
 
@@ -70,8 +73,7 @@ class SingleWell:
                 solution = None,
                 vol = 0,
                 d_vol = 0):
-        """
-        Models one titration, with:
+        """Models one titration, with:
             certain species,
             volume $V$,
             uncertainty of volume $dV$,
@@ -93,6 +95,18 @@ class SingleWell:
         4. Error introduced to the concentration. This is modelled by expanding another
             column and another row at the end of covariance matrix, and filling
             it with $$ \sigma^2(c)E(\frac{V}{V + V_0})$$
+
+        Parameters
+        ----------
+        solution :
+             (Default value = None)
+        vol :
+             (Default value = 0)
+        d_vol :
+             (Default value = 0)
+
+        Returns
+        -------
 
         """
 
@@ -131,53 +145,75 @@ class SingleWell:
 
     @property
     def vols_rv(self):
+        """ Random variable describing the volume of the cell."""
         if (self.analytical == False) and (self.sampled == False):
             self.sample()
-        if self.finished_select_non_zero == False:
+        if (self.analytical == True) and (self.finished_select_non_zero == False):
             self.select_non_zero()
 
         return copy.deepcopy(tfd.Normal(loc=np.array(self.vols, dtype=np.float32),
-                    scale=np.array(self.vols_cov, dtype=np.float32)))
+                    scale=np.array(self.vols_cov[:, :], dtype=np.float32)))
 
     @property
     def concs_l_rv(self):
+        """ Random variable describing the ligand concentrations of the cell."""
         if (self.analytical == False) and (self.sampled == False):
             self.sample()
-        if self.finished_select_non_zero == False:
+        if (self.analytical == True) and (self.finished_select_non_zero == False):
             self.select_non_zero()
-        return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[1, :], dtype=np.float32),
+
+        return copy.deepcopy(tfd.MultivariateNormalFullCovariance(
+                    loc=np.array(self.concs[1, :], dtype=np.float32),
                     covariance_matrix=np.array(self.concs_cov[1, :, :], dtype=np.float32)))
 
     @property
     def concs_p_rv(self):
+        """ Random variable describing the protein concentrations of the cell."""
         if (self.analytical == False) and (self.sampled == False):
             self.sample()
-        if self.finished_select_non_zero == False:
+        if (self.analytical == True) and (self.finished_select_non_zero == False):
             self.select_non_zero()
-        return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[0, :], dtype=np.float32),
+
+        return copy.deepcopy(tfd.MultivariateNormalFullCovariance(
+                    loc=np.array(self.concs[0, :], dtype=np.float32),
                     covariance_matrix=np.array(self.concs_cov[0, :, :], dtype=np.float32)))
 
     @property
     def concs_r_rv(self):
+        """ Random variable describing the receptor concentrations of the cell."""
         if (self.analytical == False) and (self.sampled == False):
             self.sample()
-        if self.finished_select_non_zero == False:
+        if (self.analytical == True) and (self.finished_select_non_zero == False):
             self.select_non_zero()
         return copy.deepcopy(tfd.MultivariateNormalFullCovariance(loc=np.array(self.concs[2, :], dtype=np.float32),
                     covariance_matrix=np.array(self.concs_cov[2, :, :], dtype=np.float32)))
 
     def sample(self, n_samples = 1):
+        """ Get a sample from an analytical cell.
+        Throws an error if the cell is not analytical.
+
+        Parameters
+        ----------
+        n_samples : number of samples obtained.
+             (Default value = 1)
+
+        """
         if self.analytical:
             import warning
-            warning.warn("This is an analytical cell, no need to sample.")
+            warning.warn("This is an analytical cell. No need to sample.")
 
         elif self.analytical == False:
             # define the random variables
-            ind_vols_rv = MultivariateLogNormalDiag(self.ind_vols, self.ind_d_vols)
-            ind_concs_p_rv = MultivariateLogNormalDiag(self.ind_concs[0, :], self.ind_d_concs[0, :])
-            ind_concs_l_rv = MultivariateLogNormalDiag(self.ind_concs[1, :], self.ind_d_concs[1, :])
-            ind_concs_r_rv = MultivariateLogNormalDiag(self.ind_concs[2, :], self.ind_d_concs[2, :])
+            ind_vols_rv = MultivariateLogNormalDiag(self.ind_vols,
+                                                    self.ind_d_vols)
+            ind_concs_p_rv = MultivariateLogNormalDiag(self.ind_concs[0, :],
+                                                       self.ind_d_concs[0, :])
+            ind_concs_l_rv = MultivariateLogNormalDiag(self.ind_concs[1, :],
+                                                       self.ind_d_concs[1, :])
+            ind_concs_r_rv = MultivariateLogNormalDiag(self.ind_concs[2, :],
+                                                       self.ind_d_concs[2, :])
 
+            # sample independent volumes and concentrations from
             ind_vols = np.log(ind_vols_rv.sample(n_samples).numpy())
             ind_concs_p = np.log(ind_concs_p_rv.sample(n_samples).numpy())
             ind_concs_l = np.log(ind_concs_l_rv.sample(n_samples).numpy())
@@ -197,7 +233,7 @@ class SingleWell:
             concs_r = np.nan_to_num(np.true_divide(q_r, vols))
 
             # now take average and give mean and variance
-            self.vols = np.average(vols.transpose(), axis=0).flatten()
+            self.vols = np.average(vols.transpose(), axis=1).flatten()
             self.concs = np.concatenate([
                          np.expand_dims(np.average(concs_p.transpose(), axis=1), axis=0),
                          np.expand_dims(np.average(concs_l.transpose(), axis=1), axis=0),
@@ -206,30 +242,29 @@ class SingleWell:
             # update volumes
             self.vols_cov = np.cov(vols.transpose())
             self.concs_cov = np.concatenate([
-                             np.expand_dims(np.cov(concs_p.transpose()), axis=2),
-                             np.expand_dims(np.cov(concs_l.transpose()), axis=2),
-                             np.expand_dims(np.cov(concs_r.transpose()), axis=2)], axis=0)
+                             np.expand_dims(np.cov(concs_p.transpose()), axis=0),
+                             np.expand_dims(np.cov(concs_l.transpose()), axis=0),
+                             np.expand_dims(np.cov(concs_r.transpose()), axis=0)], axis=0)
 
+            # mark the object as sampled
             self.sampled = True
 
-            return vols, concs_p, concs_l, concs_r
 
-    def select_non_zero(self):
+    def select_non_zero(self, n_zeros):
+        """Select strictly nonzero volumes and concentrations for analysis.
+
+        Parameters
+        ----------
+        n_zeros : number of void observations.
+
+
+        Returns
+        -------
+
         """
-        Select strictly nonzero volumes and concentrations for analysis.
 
-        """
-        from functools import reduce
-
-        non_zero_idxs = reduce(np.intersect1d,
-                              (np.where(self.vols>0),
-                               # np.where(self.concs[0,:]>0),
-                               np.where(self.concs[0,:]>0)))
-
-        print(self.concs_cov)
-        print(self.concs_cov.shape)
-        self.vols = self.vols[non_zero_idxs]
-        self.concs = self.concs[:, non_zero_idxs]
-        self.vols_cov = self.vols_cov[non_zero_idxs, :][:, non_zero_idxs]
-        self.concs_cov = self.concs_cov[:, non_zero_idxs, :][:, :, non_zero_idxs]
+        self.vols = self.vols[n_zeros:]
+        self.concs = self.concs[:, n_zeros:]
+        self.vols_cov = self.vols_cov[n_zeros:, :][:, n_zeros:]
+        self.concs_cov = self.concs_cov[:, n_zeros:, :][:, :, n_zeros:]
         self.finished_select_non_zero = True

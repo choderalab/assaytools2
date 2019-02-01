@@ -11,30 +11,71 @@ import titration
 import analyzer
 # from bindingmodels import TwoComponentBindingModel
 
+@tf.contrib.eager.defun
 def equilibrium_concentrations(delta_g, concs_p_tot, concs_l_tot):
+    """ Calculate the equilibrium concentrations based on binding energy,
+    the total protein concentration, and total ligand concentration.
+
+    Note that this function is complied into a tensorflow function
+    and outputs tensor for speed considerations.
+
+    Iteratively calling this function under a tf.GradientTape
+    might result in creating too many threads in CPU.
+
+    Solves this function:
+
+    $$
+    RL = \frac{1}{2} \[( R_T + L_T + K_d)
+    + \sqrt{( R_T + L_T + K_d)^2 - 4 R_T L_T} \]
+    $$
+
+    Parameters
+    ----------
+    delta_g : binding energy, in kT
+    concs_p_tot : total concentration of protein
+    concs_l_tot : total concentration of ligand
+
+
+    Returns
+    -------
+    p : true concentration of protein
+    l : true concentration of ligand
+    pl : true concentration of complex
+
+
+    """
     plk = concs_p_tot + concs_l_tot + tf.exp(delta_g)
     sqrt_arg = tf.math.maximum(0.0, tf.square(plk) - 4 * concs_p_tot * concs_l_tot)
     pl = 0.5 * plk - 0.5 * tf.sqrt(sqrt_arg)
     p = concs_p_tot - pl
     l = concs_l_tot - pl
-    return (p, l, pl)
+    return p, l, pl
 
 def make_model(well_complex, well_ligand,
-               fi_complex, fi_ligand, debug = False, kernel = 'random_walk_metropolis'):
+               fi_complex, fi_ligand, debug = False, kernel = 'random_walk_metropolis',
+               num_results = 1000, num_burnin_steps = 300):
 
-    """
-    Build a tfp model for an assay that consists of N wells of protein:ligand
+    """Build a tfp model for an assay that consists of N wells of protein:ligand
     at various concentrations and an additional N wells of ligand in buffer,
     with the ligand at the same concentrations as the corresponding protein:ligand wells.
 
-    Parameters:
-    well_complex : a titration.SingleWell object, models the well in which the fluorescense
-                   of the complex is measured.
-    well_ligand : a titration.SingleWell object, models the well in which the fluorescense
-                    of the ligand is measured.
-    fi_complex : np.array, shape = (N, ). the fluorescense intensity of the complex.
-    fi_ligand : np.array, shape = (N, ). the fluorescense intensity of the ligand.
+    Parameters
+    ----------
+    well_complex : titration.SingleWell, the main titration cell
+    well_ligand : titration.SingleWell, the reference cell
+    fi_complex : np.ndarray, measured fluorescense intensity of complex cell
+    fi_ligand : np.ndarray, measured fluorescense intensity of the reference cell
+    debug :
+         (Default value = False)
+    kernel :
+         (Default value = 'random_walk_metropolis')
+    num_results :
+         (Default value = 1000)
+    num_burnin_steps :
+         (Default value = 300)
 
+    Returns
+    -------
 
     """
 
@@ -139,18 +180,14 @@ def make_model(well_complex, well_ligand,
         # and protein-ligand complex
 
         concs_p_, concs_l_, concs_pl_ = equilibrium_concentrations(delta_g, concs_p_complex, concs_l_complex)
-        # print(concs_p_, concs_l_, concs_pl_)
 
         # predict observed fluorescence intensity
         fi_complex_ = fi_p * concs_p_ + fi_l * concs_l_ + fi_pl * concs_pl_ + path_length * fi_buffer + fi_plate
         fi_ligand_ = fi_l * concs_l_ligand + path_length * fi_buffer + fi_plate
 
-
-
         # make this rv inside the function, since it changes with jeffery_log_sigma
         fi_complex_rv = tfd.Normal(loc=tf.constant(fi_complex, dtype=tf.float32), scale=tf.square(tf.exp(jeffrey_log_sigma_complex)))
         fi_ligand_rv = tfd.Normal(loc=tf.constant(fi_ligand, dtype=tf.float32), scale=tf.square(tf.exp(jeffrey_log_sigma_ligand)))
-
 
         #======================================================================
         # Sum up the log_prob.
@@ -158,7 +195,6 @@ def make_model(well_complex, well_ligand,
         # NOTE: this is very weird. the LogNormal offered by tfp
         # is actually just normal distribution but with transformation before input
         # so you have to transfer again yourself
-
 
         log_prob = (delta_g_rv.log_prob(delta_g) # initialize a log_prob
                  + fi_plate_rv.log_prob(fi_plate)
@@ -177,8 +213,7 @@ def make_model(well_complex, well_ligand,
                  + tf.reduce_sum(jeffrey_log_sigma_rv.log_prob(jeffrey_log_sigma_complex))
                  + tf.reduce_sum(jeffrey_log_sigma_rv.log_prob(jeffrey_log_sigma_ligand)))
 
-
-        if debug == True:
+        if debug == True: # plot trajectories of the inference
             for idx, value in enumerate([delta_g, fi_plate, fi_buffer, fi_pl, fi_p, fi_l, concs_p_complex,
                     concs_l_complex, concs_l_ligand, jeffrey_log_sigma_complex, jeffrey_log_sigma_ligand]):
                 if value.ndim == 0:
@@ -195,8 +230,8 @@ def make_model(well_complex, well_ligand,
     if kernel == 'hamiltonian_monte_carlo':
         # put the log_prob function and initial guesses into a mcmc chain
         chain_states, kernel_results = tfp.mcmc.sample_chain(
-            num_results=int(10000),
-            num_burnin_steps=int(300),
+            num_results=int(num_results),
+            num_burnin_steps=int(num_burnin_steps),
             parallel_iterations=1,
             current_state=current_state,
             kernel=tfp.mcmc.TransformedTransitionKernel(
@@ -212,17 +247,17 @@ def make_model(well_complex, well_ligand,
                 inner_kernel=tfp.mcmc.HamiltonianMonteCarlo(
                 target_log_prob_fn=joint_log_prob,
                 num_leapfrog_steps=2,
-                step_size=tf.Variable(0.1),
+                step_size=tf.Variable(0.5),
                 step_size_update_fn=tfp.mcmc.make_simple_step_size_update_policy()
                 )))
 
     elif kernel == 'random_walk_metropolis':
         # RandomWalkMetropolis implementation
         chain_states, kernel_results = tfp.mcmc.sample_chain(
-                     num_results=10000,
+                     num_results=int(num_results),
                      current_state=current_state,
                      kernel=tfp.mcmc.RandomWalkMetropolis(joint_log_prob),
-                     num_burnin_steps=100,
+                     num_burnin_steps=int(num_burnin_steps),
                      parallel_iterations=1)
 
     return chain_states, kernel_results, rvs, trajs
