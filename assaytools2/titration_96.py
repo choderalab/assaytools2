@@ -13,7 +13,7 @@ import tensorflow_probability as tfp
 from tensorflow_probability import distributions as tfd
 import copy
 from tensorflow_probability import edward2 as ed
-from utils import *
+from .utils import *
 
 @tf.contrib.eager.defun
 def cov(X):
@@ -59,8 +59,8 @@ class Solution:
         if d_concs == None:
             d_concs = [d_conc_p, d_conc_l, d_conc_r]
 
-        self.concs = tf.constant([conc_p, conc_l, conc_r], dtype=tf.float32)
-        self.d_concs = tf.constant([d_conc_p, d_conc_l, d_conc_r], dtype=tf.float32)
+        self.concs = tf.constant(concs, dtype=tf.float32)
+        self.d_concs = tf.constant(d_concs, dtype=tf.float32)
 
 
 class Plate:
@@ -70,7 +70,7 @@ class Plate:
 
     Attributes
     ----------
-    n_cells : int
+    n_wells : int
         number of cells in the plate.
     path_length : float
         length of the path of the cells.
@@ -90,9 +90,9 @@ class Plate:
 
     """
 
-    def __init__(self, n_cells: int, path_length: float = 1.0) -> None:
+    def __init__(self, n_wells: int, path_length: float = 1.0) -> None:
         # generic properties of the plate
-        self.n_cells = n_cells
+        self.n_wells = n_wells
         self.path_length = path_length
 
         # flags for status
@@ -102,25 +102,25 @@ class Plate:
         # matrices to keep track of the quantities in the plate
 
         # individual volumes at each time step
-        # (time, n_cells)
-        self.ind_vols = tf.zeros((1, n_cells), dtype=tf.float32)
+        # (time, n_wells)
+        self.ind_vols = tf.zeros((1, n_wells), dtype=tf.float32)
 
         # individual concentrations at each time step
-        # (time, 3, n_cells)
-        self.ind_concs = tf.zeros((1, 3, n_cells), dtype=tf.float32)
+        # (time, 3, n_wells)
+        self.ind_concs = tf.zeros((1, 3, n_wells), dtype=tf.float32)
 
         # uncertainty associated with ind_vols
-        # (time, n_cells)
-        self.ind_d_vols = tf.zeros((1, n_cells), dtype=tf.float32)
+        # (time, n_wells)
+        self.ind_d_vols = tf.zeros((1, n_wells), dtype=tf.float32)
 
         # uncertainty associated with ind_concs
-        # (time, 3, n_cells)
-        self.ind_d_concs = tf.zeros((1, 3, n_cells), dtype=tf.float32)
+        # (time, 3, n_wells)
+        self.ind_d_concs = tf.zeros((1, 3, n_wells), dtype=tf.float32)
 
     def inject(
             self,
             solution = None,
-            cell_idx: int = 0,
+            well_idx: int = 0,
             vol: float = 0.0,
             d_vol: float = 0.0) -> None:
 
@@ -159,34 +159,38 @@ class Plate:
              uncertainty associated with val
 
         """
+        # assert that the place of injection is within the plate
+        assert well_idx < self.n_wells
 
         # handle ind_vols
-        new_ind_vols = tf.Variable(tf.zeros((1, n_cells), dtype=tf.float32))
-        new_ind_vols[0, cell_idx].assign(vol + new_ind_vols[0, cell_idx])
+        new_ind_vols = tf.Variable(
+            tf.zeros((1, self.n_wells), dtype=tf.float32))
+        new_ind_vols[0, well_idx].assign(vol + new_ind_vols[0, well_idx])
         self.ind_vols = tf.concat((self.ind_vols, new_ind_vols),
             axis=0)
 
         # handle ind_concs
-        new_ind_concs = tf.Variable(tf.zeros((1, 3, n_cells), dtype=tf.float32))
-        new_ind_concs[0, :, cell_idx].assign(solution.concs
-            + new_ind_concs[0, :, cell_idx])
+        new_ind_concs = tf.Variable(
+            tf.zeros((1, 3, self.n_wells), dtype=tf.float32))
+        new_ind_concs[0, :, well_idx].assign(solution.concs
+            + new_ind_concs[0, :, well_idx])
         self.ind_concs = tf.concat((self.ind_concs, new_ind_concs),
             axis=0)
 
         # handle ind_d_vols
-        new_ind_d_vols = tf.Variable(tf.zeros((1, n_cells), dtype=tf.float32))
-        new_ind_d_vols[0, cell_idx].assign(d_vol + new_ind_d_vols[0, cell_idx])
+        new_ind_d_vols = tf.Variable(
+            tf.zeros((1, self.n_wells), dtype=tf.float32))
+        new_ind_d_vols[0, well_idx].assign(d_vol + new_ind_d_vols[0, well_idx])
         self.ind_d_vols = tf.concat((self.ind_d_vols, new_ind_d_vols),
             axis=0)
 
         # handle ind_d_concs
-        new_ind_d_concs = tf.Variable(tf.zeros((1, 3, n_cells),
-            dtype=tf.float32))
-        new_ind_concs[0, :, cell_idx].assign(solution.d_concs
-            + new_ind_concs[0, :, cell_idx])
+        new_ind_d_concs = tf.Variable(
+            tf.zeros((1, 3, self.n_wells), dtype=tf.float32))
+        new_ind_d_concs[0, :, well_idx].assign(solution.d_concs
+            + new_ind_d_concs[0, :, well_idx])
         self.ind_d_concs = tf.concat((self.ind_d_concs, new_ind_d_concs),
             axis=0)
-
 
     def sample(self, n_samples: int = 1) -> None:
         """ Sample independent volumes and concentrations and compute the
@@ -198,8 +202,9 @@ class Plate:
             the number of samples
 
         """
-        time = self.ind_vols.shape[0]
-        n_cells = self.ind_vols.shape[1]
+        time = int(self.ind_vols.shape[0])
+        n_wells = int(self.ind_vols.shape[1])
+
         # ========
         # sampling
         # ========
@@ -221,7 +226,7 @@ class Plate:
         ind_vols_fl_sampled = tf.log(
             ind_vols_fl_rv.sample(n_samples))
         ind_concs_fl_sampled = np.log(
-            ind_d_concs_fl_rv.sample(n_samples))
+            ind_concs_fl_rv.sample(n_samples))
 
         # drop ref, in case it is used under high performace context
         del ind_vols_fl
@@ -234,15 +239,15 @@ class Plate:
         # reshape back
         # NOTE: although this is not deterministically stable,
         #       it was validated to work
-        # (n_samples, time, n_cells)
+        # (n_samples, time, n_wells)
         ind_vols_sampled = tf.reshape(
             ind_vols_fl_sampled,
-            (n_samples, time, n_cells))
-        # (n_samples, time, 3, n_cells)
+            (n_samples, time, n_wells))
+        # (n_samples, time, 3, n_wells)
         ind_concs_sampled = tf.reshape(
             ind_concs_fl_sampled,
             (n_samples,
-            time, 3, n_cells))
+            time, 3, n_wells))
 
         # ================
         # calculating mean
@@ -253,51 +258,63 @@ class Plate:
         # shape = (time, time)
         tril_ones = tf.tile(
             tf.expand_dims(tf.linalg.band_part(tf.eye(time), -1, 0), 0),
-            n_samples)
+            [n_samples, 1, 1])
 
         # calculate the cumulative volume, sampled
-        # (n_samples, time, n_cells)
-        vols_sampled = tf.matmul(tril_ones, ind_vols_sampled,
-            a_is_sparse=True, b_is_sparse=True)
-        # (time, n_cells)
+        # (n_samples, time, n_wells)
+        vols_sampled = tf.matmul(tril_ones, ind_vols_sampled)
+        # (time, n_wells)
         self.vols = tf.math.reduce_mean(vols_sampled, 0)
 
         # handle quantities
-        # (n_samples, time, 3, n_cells)
+        # (n_samples, time, 3, n_wells)
         ind_qs = tf.multiply(
-            tf.tile(tf.expand_dims(ind_vols_sampled, 2), 3),
+            tf.tile(tf.expand_dims(ind_vols_sampled, 2), [1, 1, 3, 1]),
             ind_concs_sampled)
-        # (n_samples, time, 3, n_cells)
-        qs = tf.matmul(tril_ones, ind_qs,
-            a_is_sparse=True, b_is_sparse=True)
+
+        # we want to implement the following:
+        # qs = tf.matmul(tril_ones, ind_qs)
+        # but this is not supported by TensorFlow
+        # (n_samples, time, 3, n_wells)
+        qs = tf.Variable(
+            tf.zeros([n_samples, time, 3, n_wells], dtype=tf.float32))
+        idx = tf.constant(0)
+
+        def loop_body(idx):
+            qs[:, :, idx, :].assign(tf.matmul(tril_ones, ind_qs[:, :, idx, :]))
+        tf.while_loop(
+            lambda idx: tf.less(idx, 3),
+            lambda idx: loop_body(idx),
+            [idx])
+        
         # average to calculate the concentrations
-        # (n_samples, time, 3, n_cells)
+        # (n_samples, time, 3, n_wells)
         concs_sampled = tf.div(
             qs,
             tf.tile(tf.expand_dims(vols_sampled, 2), 3))
-        # (time, 3, n_cells)
+        # (time, 3, n_wells)
         self.concs = tf.math.reduce_mean(concs_sampled, 0)
 
         # ======================
         # calculating covariance
         # ======================
-        # (time, time, n_cells)
+        # (time, time, n_wells)
         vols_cov = tf.Variable(
-            tf.zeros((time, time, n_cells), dtype=tf.float32)) # initialize
+            tf.zeros((time, time, n_wells), dtype=tf.float32)) # initialize
         # NOTE: tf.while_loop is actually paralled
         idx = tf.constant(0)
         def loop_body(idx):
             vols_cov[:, :, idx].assign(cov(vols_sampled[:, :, idx]))
             return idx + 1
         tf.while_loop(
-            lambda idx: tf.less(idx, n_cells),
+            lambda idx: tf.less(idx, n_wells),
             lambda idx: loop_body(idx),
             [idx])
         self.vols_cov = vols_cov
 
-        # (time, time, 3, n_cells)
+        # (time, time, 3, n_wells)
         concs_cov = tf.Variable(
-            tf.zeros((time, time, 3, n_cells), dtype=tf.float32))
+            tf.zeros((time, time, 3, n_wells), dtype=tf.float32))
         idx0 = tf.constant(0)
         idx1 = tf.constant(0)
         def loop_body(idx0, idx1):
@@ -307,7 +324,7 @@ class Plate:
         tf.while_loop(
             lambda idx0, idx1: tf.logical_and(
                 tf.less(idx0, 3),
-                tf.less(idx1, n_cells)),
+                tf.less(idx1, n_wells)),
             lambda idx0, idx1 : loop_body(idx0, idx1),
             [idx0, idx1])
         self.concs_cov = concs_cov
