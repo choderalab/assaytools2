@@ -6,9 +6,9 @@ import tensorflow_probability as tfp
 from tensorflow_probability import distributions as tfd
 import copy
 from tensorflow_probability import edward2 as ed
-from utils import *
-import titration
-import analyzer
+from .utils import *
+from . import titration
+# import analyzer
 # from bindingmodels import TwoComponentBindingModel
 
 @tf.contrib.eager.defun

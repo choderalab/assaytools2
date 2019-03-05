@@ -3,9 +3,19 @@ test_titration_96.py
 """
 
 import pytest
+
 from ..titration_96 import *
 import numpy
 import numpy.testing as npt
+
+# ========
+# test cov
+# ========
+def test_cov():
+    X = tf.constant([[1.0, 2.0], [3.0, 4.0]], dtype=tf.float32)
+    npt.assert_almost_equal(
+        cov(X),
+        [[1.0, 1.0], [1.0, 1.0]])
 
 # =============
 # test Solution
@@ -130,4 +140,4 @@ def test_sample(plate, ligand_stock, protein_stock, complex_stock):
     """
 
     plate.inject(ligand_stock, 0, 1.0, 0.02)
-    print(plate.sample())
+    plate.sample()

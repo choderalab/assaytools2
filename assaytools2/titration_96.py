@@ -13,13 +13,13 @@ import tensorflow_probability as tfp
 from tensorflow_probability import distributions as tfd
 import copy
 from tensorflow_probability import edward2 as ed
-from .utils import *
+from utils import *
 
-@tf.contrib.eager.defun
-def cov(X):
+# @tf.contrib.eager.defun
+def cov(x):
     """ Covariance of an 2D array.
 
-    $ K_{XX} = Cov(X, X) = E(XX^T) - E(X)E^T(X) $
+    $ K_{XX} = Cov(X, X) = E(X^T X) - E^T(X)E(X) $
 
     Parameters
     ----------
@@ -28,18 +28,24 @@ def cov(X):
     Returns
     -------
     cov : the covariance matrix
+
     """
-    X = tf.expand_dims(X, 1)
-    cov_ = tf.reduce_mean(tf.matmul(X, tf.transpose(X, [0, 2, 1])), 0)\
-        - tf.matmul(
-                tf.reduce_mean(X, 0),
-                tf.transpose(tf.reduce_mean(X, [0, 2, 1])))
+    # X.shape = (n_samples, time)
+    n_samples = x.shape[0].value
+    xtx = tf.matmul(tf.transpose(x), x)
+    e_xtx = tf.div(xtx, n_samples)
+    e_x = tf.reduce_mean(x, axis=[0], keep_dims=True)
+    et_x = tf.transpose(e_x)
+
+    # note that we use this transpose form because
+    # n_samples is at the first axis
+    cov_ = e_xtx - tf.matmul(et_x, e_x)
 
     return cov_
 
 class Solution:
-    """A Solution object contains the information about the solution, i.e. species,
-    concentrations, and so forth.
+    """A Solution object contains the information about the solution,
+    i.e. species, concentrations, and so forth.
 
     Attributes
     ----------
@@ -202,8 +208,8 @@ class Plate:
             the number of samples
 
         """
-        time = int(self.ind_vols.shape[0])
-        n_wells = int(self.ind_vols.shape[1])
+        time = self.ind_vols.shape[0].value
+        n_wells = self.ind_vols.shape[1].value
 
         # ========
         # sampling
@@ -279,21 +285,26 @@ class Plate:
         qs = tf.Variable(
             tf.zeros([n_samples, time, 3, n_wells], dtype=tf.float32))
         idx = tf.constant(0)
-
         def loop_body(idx):
             qs[:, :, idx, :].assign(tf.matmul(tril_ones, ind_qs[:, :, idx, :]))
+            return idx + 1
         tf.while_loop(
-            lambda idx: tf.less(idx, 3),
+            lambda idx: tf.less(idx, tf.constant(3)),
             lambda idx: loop_body(idx),
             [idx])
-        
+
         # average to calculate the concentrations
         # (n_samples, time, 3, n_wells)
         concs_sampled = tf.div(
             qs,
-            tf.tile(tf.expand_dims(vols_sampled, 2), 3))
+            tf.tile(tf.expand_dims(vols_sampled, 2), [1, 1, 3, 1]))
         # (time, 3, n_wells)
-        self.concs = tf.math.reduce_mean(concs_sampled, 0)
+        concs = tf.math.reduce_mean(concs_sampled, 0)
+        # convert nan (0/0) to 0.
+        concs = tf.where(tf.math.is_nan(concs),
+            tf.zeros_like(concs),
+            concs)
+        self.concs = concs
 
         # ======================
         # calculating covariance
@@ -327,4 +338,9 @@ class Plate:
                 tf.less(idx1, n_wells)),
             lambda idx0, idx1 : loop_body(idx0, idx1),
             [idx0, idx1])
+
+        # convert nan (0/0) to 0.
+        concs_cov = tf.where(tf.math.is_nan(concs_cov),
+            tf.zeros_like(concs_cov),
+            concs_cov)
         self.concs_cov = concs_cov

@@ -13,7 +13,7 @@ import tensorflow_probability as tfp
 from tensorflow_probability import distributions as tfd
 import copy
 from tensorflow_probability import edward2 as ed
-from utils import *
+from .utils import *
 
 class Solution:
     """A Solution object contains the information about the solution, i.e. species,
